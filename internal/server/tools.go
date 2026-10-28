@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,13 +15,6 @@ import (
 	"github.com/Dobytchick/roomtodo-mcp/internal/plan"
 	"github.com/Dobytchick/roomtodo-mcp/internal/roomtodo"
 )
-
-func hdr(req *mcp.CallToolRequest) http.Header {
-	if req != nil && req.Extra != nil {
-		return req.Extra.Header
-	}
-	return nil
-}
 
 func ptr[T any](v T) *T { return &v }
 
@@ -114,7 +106,7 @@ func (s *Server) registerTools() {
 				return nil, err
 			}
 			p := plan.New(in.Name)
-			return s.save(ctx, hdr(req), dst, p)
+			return s.save(ctx, dst, p)
 		})
 
 	type getIn struct {
@@ -143,7 +135,7 @@ func (s *Server) registerTools() {
 	tool(s, "save_project_as", "Save project as",
 		"Copy a project between places: download an account or shared project to a file, upload a file to the account, or duplicate.", edits,
 		func(ctx context.Context, req *mcp.CallToolRequest, in copyIn) (any, error) {
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				if in.Name != "" {
 					p["name"] = in.Name
 				}
@@ -198,7 +190,7 @@ func (s *Server) registerTools() {
 	tool(s, "create_floorplan", "Create floor plan",
 		`Build walls and rooms from rectangles. Rooms are touching rectangles in cm (x right, y down); a partition is centred on each shared border and exterior walls are added outside. "openings" are doorways between rooms that share a wall. Replaces the project's existing walls and rooms; placed objects are kept. Doors and windows are then added with add_object.`,
 		edits, func(ctx context.Context, req *mcp.CallToolRequest, in floorIn) (any, error) {
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				return floorplan.Build(p, in.Spec)
 			})
 		})
@@ -212,7 +204,7 @@ func (s *Server) registerTools() {
 			if in.HeightCM < 100 || in.HeightCM > 1000 {
 				return nil, errors.New("height_cm must be between 100 and 1000")
 			}
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				plan.SetWallsHeight(p, in.HeightCM)
 				return nil, nil
 			})
@@ -222,13 +214,41 @@ func (s *Server) registerTools() {
 		projectArg
 		Target   string `json:"target" jsonschema:"floor, ceiling or walls"`
 		Room     string `json:"room,omitempty" jsonschema:"room name; empty means every room"`
-		Material string `json:"material" jsonschema:"catalog material id (search_catalog kind=material) or a colour like #e0d5c0"`
+		Material string `json:"material,omitempty" jsonschema:"catalog material id (search_catalog kind=material); colourable ones (colorable: true) take color too"`
+		Color    string `json:"color,omitempty" jsonschema:"colour like #e0d5c0: alone it paints the surface, with a colourable material it tints it"`
 	}
-	tool(s, "set_material", "Set material", "Apply a catalog material or a colour to the floor, ceiling or walls of a room.", edits,
+	tool(s, "set_material", "Set material",
+		"Apply a catalog material, a colour, or both (for colourable materials such as matte tile) to the floor, ceiling or walls of a room.", edits,
 		func(ctx context.Context, req *mcp.CallToolRequest, in materialIn) (any, error) {
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
-				n, err := plan.SetMaterial(p, in.Target, in.Room, in.Material)
-				return map[string]int{"changed": n}, err
+			var f plan.Finish
+			switch {
+			case in.Material == "" && in.Color == "":
+				return nil, errors.New("give material, color, or both")
+			case in.Material == "":
+				f = plan.ColorFinish(in.Color, "")
+			case strings.HasPrefix(in.Material, "#"): // a colour passed as material
+				f = plan.ColorFinish(in.Material, "")
+			default:
+				product, err := s.api.Product(ctx, in.Material)
+				if err != nil {
+					return nil, err
+				}
+				if toF(product["type"]) != 1 {
+					return nil, fmt.Errorf("%s is an object, not a material: use add_object", in.Material)
+				}
+				if b, _ := product["isColorPicker"].(bool); b {
+					color := in.Color
+					if color == "" {
+						color = "#ffffff"
+					}
+					f = plan.ColorFinish(color, in.Material)
+				} else {
+					f = plan.Finish{M: in.Material}
+				}
+			}
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+				n, err := plan.SetMaterial(p, in.Target, in.Room, f)
+				return map[string]any{"changed": n, "m": f.M, "addM": f.AddM}, err
 			})
 		})
 
@@ -307,7 +327,7 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return nil, err
 			}
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				pl := plan.Placement{Rotation: in.Rotation, ScaleX: in.Scale, ScaleY: in.Scale, ScaleZ: in.Scale}
 				switch {
 				case in.X != nil && in.Y != nil:
@@ -360,7 +380,7 @@ func (s *Server) registerTools() {
 	tool(s, "move_object", "Move object",
 		"Move, rotate, lift, scale or hide a placed object. Doors and windows stay snapped to a wall.", edits,
 		func(ctx context.Context, req *mcp.CallToolRequest, in moveIn) (any, error) {
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				_, err := plan.UpdateProduct(p, in.ObjID, plan.Patch{X: in.X, Y: in.Y, Rotation: in.Rotation, Elevation: in.Elevation,
 					ScaleX: in.ScaleX, ScaleY: in.ScaleY, ScaleZ: in.ScaleZ, Visible: in.Visible})
 				return nil, err
@@ -373,7 +393,7 @@ func (s *Server) registerTools() {
 	}
 	tool(s, "remove_object", "Remove object", "Remove a placed object.", destructive,
 		func(ctx context.Context, req *mcp.CallToolRequest, in removeIn) (any, error) {
-			return s.edit(ctx, hdr(req), in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
+			return s.edit(ctx, in.Project, in.SaveTo, func(p plan.Plan) (any, error) {
 				_, err := plan.RemoveProduct(p, in.ObjID)
 				return nil, err
 			})
@@ -404,10 +424,8 @@ func (s *Server) localFiles() []string {
 		}
 	}
 	sort.Strings(out)
-	if !s.cfg.HTTPMode {
-		for i, n := range out {
-			out[i] = filepath.Join(s.cfg.ProjectsDir, n)
-		}
+	for i, n := range out {
+		out[i] = filepath.Join(s.cfg.ProjectsDir, n)
 	}
 	return out
 }
@@ -463,6 +481,9 @@ func compactProduct(it map[string]any) map[string]any {
 	prop, _ := it["property"].(map[string]any)
 	if toF(it["type"]) == 1 {
 		out["kind"] = "material"
+		if b, _ := it["isColorPicker"].(bool); b {
+			out["colorable"] = true
+		}
 	} else {
 		out["kind"] = "object"
 		out["placement"] = "floor"

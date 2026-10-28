@@ -54,22 +54,29 @@ func Summarize(p Plan, withWalls bool) Summary {
 	c := Construction(p)
 	s := Summary{ID: p["id"], Name: str(p["name"]), Hash: p["hash"], WallsHeight: WallsHeight(p),
 		Rooms: []RoomInfo{}, Objects: []ObjectInfo{}}
-	areas := map[string]map[string]any{}
-	for _, a := range maps(list(c, "areas")) {
-		areas[str(a["id"])] = a
+	byID := func(key string) map[string]map[string]any {
+		m := map[string]map[string]any{}
+		for _, o := range maps(list(c, key)) {
+			m[str(o["id"])] = o
+		}
+		return m
 	}
+	areas, covers := byID("areas"), byID("covers")
 	for _, r := range g.rooms {
 		if len(r.Outline) < 3 {
 			continue
 		}
 		mn, mx := bounds(r.Outline)
-		ce := centroid(r.Outline)
-		a := areas[r.ID]
+		ce := interiorPoint(r.Outline)
+		src := covers[r.CoverID] // the visible floor, else the area
+		if src == nil {
+			src = areas[r.AreaID]
+		}
 		info := RoomInfo{ID: r.ID, Name: r.Name, AreaM2: math.Round(math.Abs(polyArea(r.Outline))/100) / 100,
 			Center: [2]float64{round1(ce.X), round1(ce.Y)}, Min: [2]float64{mn.X, mn.Y}, Max: [2]float64{mx.X, mx.Y},
-			HeightCM: num(a["h"])}
-		info.Floor = firstStr(a["addM"], a["m"])
-		info.Ceiling = firstStr(a["addMc"], a["mc"])
+			HeightCM: num(src["ch"])}
+		info.Floor = finish(src["m"], src["addM"])
+		info.Ceiling = finish(src["mc"], src["addMc"])
 		s.Rooms = append(s.Rooms, info)
 	}
 	for _, pr := range Products(p) {
@@ -94,11 +101,10 @@ func Summarize(p Plan, withWalls bool) Summary {
 	return s
 }
 
-func firstStr(vs ...any) string {
-	for _, v := range vs {
-		if s := str(v); s != "" {
-			return s
-		}
+// finish describes a surface: "2890" (material), "#dfe8ec on 41823" (colour on a colourable base).
+func finish(m, addM any) string {
+	if a := str(addM); a != "" {
+		return str(m) + " on " + a
 	}
-	return ""
+	return str(m)
 }

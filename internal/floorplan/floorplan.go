@@ -299,6 +299,17 @@ func Build(p plan.Plan, s Spec) (*Result, error) {
 			"m": floorColor, "addM": "", "mr": 0, "mx": 0, "my": 0,
 			"mc": ceilingColor, "addMc": "", "mcr": 0, "mcx": 0, "mcy": 0,
 		})
+		// The room's own floor ("cover"): the visible floor, its material and its label. Covers
+		// that tile every wall hole also stop the planner from adding one floor for the whole hole.
+		var best loop
+		for _, lp := range trace(nx, ny, func(i, j int) bool { return at(i, j) == k }, func(i, j int) int { return 0 }) {
+			if lp.area > best.area {
+				best = lp
+			}
+		}
+		if len(best.pts) >= 3 {
+			b.covers = append(b.covers, b.cover(best, r.Name, rh))
+		}
 		// Clear inside size: the room rectangle minus partitions on shared sides.
 		in := rooms[k]
 		for q, o := range rooms {
@@ -323,17 +334,18 @@ func Build(p plan.Plan, s Spec) (*Result, error) {
 	}
 
 	c := plan.Construction(p)
-	c["points"], c["walls"], c["cuts"], c["rooms"], c["areas"], c["covers"] = b.pointList, b.walls, b.cuts, b.rooms, areas, []any{}
+	c["points"], c["walls"], c["cuts"], c["rooms"], c["areas"], c["covers"] = b.pointList, b.walls, b.cuts, b.rooms, areas, b.covers
 	plan.SetWallsHeight(p, wh)
 	centerCamera(p, rooms)
 	res.Walls, res.Cuts = len(b.walls), len(b.cuts)
 	return res, nil
 }
 
+// The planner's default finishes (R2D.default.materials): white plaster and laminate.
 const (
-	wallColor    = "#efe9e1"
-	floorColor   = "#b9895b"
-	ceilingColor = "#ffffff"
+	wallColor    = "2013"
+	floorColor   = "2525"
+	ceilingColor = "2013"
 )
 
 func centerCamera(p plan.Plan, rooms []rect) {
@@ -488,9 +500,40 @@ type builder struct {
 	walls     []any
 	cuts      []any
 	rooms     []any
+	covers    []any
+	cpoints   map[[2]int]int // floor outline points ("cp"), separate from wall points
 }
 
 func (b *builder) next() int { b.id++; return b.id }
+
+func (b *builder) coverPoint(v [2]int) int {
+	if b.cpoints == nil {
+		b.cpoints = map[[2]int]int{}
+	}
+	if id, ok := b.cpoints[v]; ok {
+		return id
+	}
+	id := b.next()
+	b.cpoints[v] = id
+	b.pointList = append(b.pointList, map[string]any{"id": id, "x": b.xs[v[0]], "y": b.ys[v[1]], "type": "cp", "control": 0})
+	return id
+}
+
+// cover emits a room's floor in the planner's format (WC.convert.coverToShort, outer).
+func (b *builder) cover(lp loop, name string, height float64) map[string]any {
+	ids := make([]any, len(lp.pts))
+	for k, v := range lp.pts {
+		ids[k] = b.coverPoint(v)
+	}
+	on := map[string]any{"view3d": true, "view2d": true, "viewConstructor": true}
+	return map[string]any{
+		"id": b.next(), "exists": true, "visible": true, "partialVisible": false, "name": "", "points": ids, "o": 1,
+		"ch": height, "cvisible": true, "cv": 1, "cpv": false, "chbi": false,
+		"m": floorColor, "addM": "", "mr": 0, "mx": 0, "my": 0,
+		"mc": ceilingColor, "addMc": "", "mcr": 0, "mcx": 0, "mcy": 0,
+		"title": map[string]any{"text": name, "visible": on, "areaVisible": on},
+	}
+}
 
 func (b *builder) point(v [2]int) int {
 	if id, ok := b.points[v]; ok {

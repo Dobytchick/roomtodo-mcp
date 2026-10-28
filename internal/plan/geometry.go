@@ -20,6 +20,8 @@ type Room struct {
 	Name    string
 	Outline []Pt
 	Walls   []string
+	// CoverID is the room's floor ("covers"), AreaID its wall-bounded area ("areas"); either may be empty.
+	CoverID, AreaID string
 }
 
 type geometry struct {
@@ -67,9 +69,70 @@ func readGeometry(p Plan) geometry {
 				pairs = append(pairs, s)
 			}
 		}
-		g.rooms = append(g.rooms, Room{ID: str(a["id"]), Name: str(a["name"]), Outline: chain(pairs), Walls: wallIDs})
+		g.rooms = append(g.rooms, Room{ID: str(a["id"]), AreaID: str(a["id"]), Name: str(a["name"]), Outline: chain(pairs), Walls: wallIDs})
+	}
+
+	// Floors ("covers") are what the planner shows as rooms: they carry the floor material and the
+	// room label, and survive re-saving in the planner (area names do not). Prefer them.
+	var floors []Room
+	for _, cv := range maps(list(c, "covers")) {
+		if num(cv["o"]) != 1 {
+			continue // a hole in a floor
+		}
+		var outline []Pt
+		for _, id := range list(cv, "points") {
+			if pt, ok := g.points[str(id)]; ok {
+				outline = append(outline, pt)
+			}
+		}
+		if len(outline) < 3 {
+			continue
+		}
+		r := Room{ID: str(cv["id"]), CoverID: str(cv["id"]), Outline: outline}
+		if t, ok := cv["title"].(map[string]any); ok {
+			r.Name = str(t["text"])
+		}
+		in := interiorPoint(outline)
+		for _, a := range g.rooms {
+			if len(a.Outline) > 2 && inside(in, a.Outline) {
+				r.AreaID, r.Walls = a.AreaID, a.Walls
+				if r.Name == "" || r.Name == "Room" {
+					r.Name = a.Name
+				}
+				break
+			}
+		}
+		floors = append(floors, r)
+	}
+	if len(floors) > 0 {
+		g.rooms = floors
 	}
 	return g
+}
+
+// interiorPoint returns a point strictly inside a simple polygon (the centroid, or a point just
+// inside the first edge when the centroid falls outside, e.g. for L-shapes).
+func interiorPoint(poly []Pt) Pt {
+	c := centroid(poly)
+	if inside(c, poly) {
+		return c
+	}
+	for i := range poly {
+		a, b := poly[i], poly[(i+1)%len(poly)]
+		m := Pt{(a.X + b.X) / 2, (a.Y + b.Y) / 2}
+		dx, dy := b.X-a.X, b.Y-a.Y
+		l := math.Hypot(dx, dy)
+		if l == 0 {
+			continue
+		}
+		for _, s := range []float64{1, -1} {
+			q := Pt{m.X - s*dy/l, m.Y + s*dx/l}
+			if inside(q, poly) {
+				return q
+			}
+		}
+	}
+	return c
 }
 
 // chain joins unordered segments into one closed outline (like WC.contourFromPairs).

@@ -232,9 +232,25 @@ func RemoveProduct(p Plan, objid string) (map[string]any, error) {
 	return nil, errf("no placed object with objid %s (see get_project)", objid)
 }
 
-// SetMaterial applies a catalog material (id) or a colour ("#rrggbb") to the floor or ceiling
-// of a room, or to the walls of a room (room "" means every room).
-func SetMaterial(p Plan, target, room, material string) (int, error) {
+// PaintBase is the planner's plain paint: a colourable base material.
+const PaintBase = "41803"
+
+// Finish is what a surface is covered with, in the planner's two fields: m is a catalog material
+// id or a colour, addM is the colourable base the colour is applied to ("" for plain materials).
+type Finish struct{ M, AddM string }
+
+// ColorFinish paints a colour ("#rrggbb") on base (a colourable material such as matte tile), or
+// on plain paint when base is "".
+func ColorFinish(color, base string) Finish {
+	if base == "" {
+		base = PaintBase
+	}
+	return Finish{M: color, AddM: base}
+}
+
+// SetMaterial applies a finish to the floor or ceiling of a room, or to the walls of a room
+// (room "" means every room).
+func SetMaterial(p Plan, target, room string, f Finish) (int, error) {
 	c := Construction(p)
 	g := readGeometry(p)
 	var rooms []Room
@@ -253,13 +269,23 @@ func SetMaterial(p Plan, target, room, material string) (int, error) {
 	n := 0
 	switch target {
 	case "floor", "ceiling":
-		for _, a := range maps(list(c, "areas")) {
-			for _, r := range rooms {
-				if str(a["id"]) == r.ID {
-					a[field], a[add] = material, ""
-					n++
+		// The visible floor is the room's cover; keep its area in step too.
+		set := func(key, id string, count bool) {
+			if id == "" {
+				return
+			}
+			for _, o := range maps(list(c, key)) {
+				if str(o["id"]) == id {
+					o[field], o[add] = f.M, f.AddM
+					if count {
+						n++
+					}
 				}
 			}
+		}
+		for _, r := range rooms {
+			set("covers", r.CoverID, true)
+			set("areas", r.AreaID, r.CoverID == "")
 		}
 	case "walls":
 		ids := map[string]bool{}
@@ -270,13 +296,13 @@ func SetMaterial(p Plan, target, room, material string) (int, error) {
 		}
 		for _, w := range maps(list(c, "walls")) {
 			if ids[str(w["id"])] {
-				w["m"], w["addM"] = material, ""
+				w["m"], w["addM"] = f.M, f.AddM
 				n++
 			}
 		}
 	default:
 		return 0, errf("target must be floor, ceiling or walls")
 	}
-	addToList(p, material)
+	addToList(p, f.M, f.AddM)
 	return n, nil
 }

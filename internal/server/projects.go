@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -51,16 +50,12 @@ func (s *Server) parseRef(v string) (ref, error) {
 	return ref{kind: "file", id: p}, nil
 }
 
-// filePath resolves a project file. In HTTP mode only the projects folder is reachable, since
-// the server may be exposed to the internet through a tunnel.
+// filePath resolves a project file: absolute paths as given, plain names inside the projects folder.
 func (s *Server) filePath(name string) (string, error) {
 	if !strings.HasSuffix(strings.ToLower(name), ".json") {
 		name += ".json"
 	}
 	if filepath.IsAbs(name) {
-		if s.cfg.HTTPMode {
-			return "", errors.New("in HTTP mode project files must be plain names inside the projects folder")
-		}
 		return filepath.Clean(name), nil
 	}
 	clean := filepath.Clean(name)
@@ -101,17 +96,16 @@ func (s *Server) load(ctx context.Context, r ref) (plan.Plan, error) {
 
 // Saved tells the model where a project went and how to open it.
 type Saved struct {
-	Where       string `json:"saved_to"`
-	ProjectID   string `json:"project_id,omitempty"`
-	File        string `json:"file,omitempty"`
-	DownloadURL string `json:"download_url,omitempty"`
-	OpenURL     string `json:"open_url,omitempty"`
-	HowToOpen   string `json:"how_to_open,omitempty"`
+	Where     string `json:"saved_to"`
+	ProjectID string `json:"project_id,omitempty"`
+	File      string `json:"file,omitempty"`
+	OpenURL   string `json:"open_url,omitempty"`
+	HowToOpen string `json:"how_to_open,omitempty"`
 }
 
 const openFileHint = "Open https://roomtodo.com/planner (no sign-in needed), press Ctrl+Alt+O and pick this file."
 
-func (s *Server) save(ctx context.Context, h http.Header, r ref, p plan.Plan) (*Saved, error) {
+func (s *Server) save(ctx context.Context, r ref, p plan.Plan) (*Saved, error) {
 	switch r.kind {
 	case "share":
 		return nil, errors.New("shared projects are read-only: pass save_to (a .json file name, or \"new\" to copy it into your account)")
@@ -147,21 +141,13 @@ func (s *Server) save(ctx context.Context, h http.Header, r ref, p plan.Plan) (*
 		if err := os.WriteFile(r.id, b, 0o644); err != nil {
 			return nil, err
 		}
-		out := &Saved{Where: "file", File: r.id, HowToOpen: openFileHint}
-		if s.cfg.HTTPMode {
-			out.File = filepath.Base(r.id)
-			if u := s.downloadURL(h, r.id); u != "" {
-				out.DownloadURL = u
-				out.HowToOpen = "Download the file, then " + strings.ToLower(openFileHint[:1]) + openFileHint[1:]
-			}
-		}
-		return out, nil
+		return &Saved{Where: "file", File: r.id, HowToOpen: openFileHint}, nil
 	}
 	return nil, errors.New("bad project reference")
 }
 
 // edit loads a project, applies fn and saves it (to saveTo when given, else back in place).
-func (s *Server) edit(ctx context.Context, h http.Header, project, saveTo string, fn func(plan.Plan) (any, error)) (map[string]any, error) {
+func (s *Server) edit(ctx context.Context, project, saveTo string, fn func(plan.Plan) (any, error)) (map[string]any, error) {
 	src, err := s.parseRef(project)
 	if err != nil {
 		return nil, err
@@ -180,7 +166,7 @@ func (s *Server) edit(ctx context.Context, h http.Header, project, saveTo string
 	if err != nil {
 		return nil, err
 	}
-	saved, err := s.save(ctx, h, dst, p)
+	saved, err := s.save(ctx, dst, p)
 	if err != nil {
 		return nil, err
 	}
