@@ -1,38 +1,42 @@
 # roomtodo-mcp
 
 An unofficial [MCP](https://modelcontextprotocol.io) server for the [roomtodo.com](https://roomtodo.com) 3D room planner.
-Let Claude, Codex or ChatGPT draw floor plans, furnish rooms, put doors and windows into walls and manage your roomtodo projects.
+Ask Claude or Codex to lay out a flat, furnish it, put doors and windows into walls and pick floors and wall colours,
+then open the result in roomtodo.
 
-> Unofficial: not affiliated with roomtodo. It talks to the same web API the planner uses, reconstructed
-> from the site itself, so it can break when the site changes.
+![One-room apartment built from a single prompt](docs/img/one-room-apartment.png)
+
+> Unofficial: not affiliated with roomtodo. It uses the same web API as the planner, reconstructed from the
+> site itself, so it can break when the site changes.
 
 [Russian ↓](#russian)
 
-## What it can do
+## Setup in 3 steps
 
-- **Floor plans:** describe rooms as rectangles plus the doorways between them, and the server builds the walls,
-  partitions, floors and passages.
-- **Furniture:** search the catalog and place, move, rotate, scale or remove objects.
-- **Doors and windows:** they snap into the nearest wall and cut the opening, just like in the planner.
-- **Materials:** floor, ceiling and wall materials or colours, and wall height.
-- **Projects:** list, open, save, copy, rename, share and delete account projects, and view your renders.
+### 1. Download
 
-### Works without an account
+Open [Releases](../../releases), download the archive for your system and unpack it, for example to
+`C:\Tools\roomtodo-mcp\`. Inside is a single program, `roomtodo-mcp` (`roomtodo-mcp.exe` on Windows). It needs
+nothing else.
 
-Without signing in you can search the catalog, open public share links, and build complete projects as local
-`.json` files. To view one, open <https://roomtodo.com/planner>, press **Ctrl+Alt+O** and pick the file.
-Signing in is only needed to save projects into your roomtodo account.
+| System | Archive |
+|---|---|
+| Windows | `roomtodo-mcp-…-windows-amd64.zip` (`arm64` for ARM laptops) |
+| macOS, Apple Silicon | `roomtodo-mcp-…-darwin-arm64.tar.gz` |
+| macOS, Intel | `roomtodo-mcp-…-darwin-amd64.tar.gz` |
+| Linux | `roomtodo-mcp-…-linux-amd64.tar.gz` |
 
-## Install
+On macOS, allow the downloaded program to run once:
 
-Download the archive for your system from [Releases](../../releases) and unpack it anywhere. It is a single
-executable with no dependencies.
+```bash
+xattr -d com.apple.quarantine /path/to/roomtodo-mcp
+```
 
-On macOS, remove the download quarantine once: `xattr -d com.apple.quarantine ./roomtodo-mcp`.
+### 2. Connect it to your assistant
 
-### Claude Desktop
+Replace the path with the place where you unpacked the program.
 
-Settings → Developer → Edit Config, then add:
+**Claude Desktop.** Open Settings → Developer → Edit Config, add the `roomtodo` entry and restart Claude:
 
 ```json
 {
@@ -44,132 +48,157 @@ Settings → Developer → Edit Config, then add:
 }
 ```
 
-### Claude Code
+**Claude Code:**
 
 ```bash
-claude mcp add roomtodo -- /path/to/roomtodo-mcp
+claude mcp add roomtodo -- C:/Tools/roomtodo-mcp/roomtodo-mcp.exe
 ```
 
-### Codex (CLI and IDE extension)
-
-Codex runs on your computer, so like Claude it starts the server directly. No tunnel needed:
+**Codex (CLI and IDE extension):**
 
 ```bash
-codex mcp add roomtodo -- /path/to/roomtodo-mcp
+codex mcp add roomtodo -- C:/Tools/roomtodo-mcp/roomtodo-mcp.exe
 ```
 
-Or add it to `~/.codex/config.toml`:
+Or add it to `~/.codex/config.toml` by hand:
 
 ```toml
 [mcp_servers.roomtodo]
 command = 'C:\Tools\roomtodo-mcp\roomtodo-mcp.exe'
 ```
 
-### ChatGPT (chat)
+### 3. Ask for something
 
-The ChatGPT chat connects to MCP servers from OpenAI's cloud over HTTPS. Run the server in HTTP mode and expose it
-with a tunnel:
+For example: *"Using roomtodo, build a one-room apartment of 40 m² in apartment.json and furnish it."*
 
-```bash
-roomtodo-mcp --http :8080
-```
+The assistant saves the project as a file. To look at it:
 
-It prints an endpoint such as `http://localhost:8080/3f9c…/mcp`. The random part of the path is a secret,
-because anyone with the URL can use the server and the roomtodo account signed in on it. Then open a tunnel, for example with
-[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/):
+1. Open <https://roomtodo.com/planner>. You don't need an account.
+2. Press **Ctrl+Alt+O** and pick the file. Files are in `~/.roomtodo-mcp/projects` unless you gave a full path.
+3. Switch to **3D** in the bottom-right corner.
 
-```bash
-cloudflared tunnel --url http://localhost:8080
-```
+## Example prompts
 
-In ChatGPT, enable developer mode for connectors and create a connector with the URL
-`https://<tunnel-host>/<secret>/mcp`, with no authentication. Restart with `--public-url https://<tunnel-host>`
-to get working download links for project files. Pass `--secret <value>` to keep the same URL across restarts.
+The server also ships these as ready-made prompts. In Claude Desktop they are in the **+** menu, and in Claude Code
+they are slash commands such as `/mcp__roomtodo__one_room_apartment`.
 
-## Signing in
+**One-room apartment of 40 m²** (`one_room_apartment`)
 
-You only need to sign in for account projects. Pick one of these:
+> Design a one-room apartment of about 40 m² in apartment.json: a living room with a sleeping area, a kitchen,
+> a bathroom and an entrance hall. Add an entrance door, windows and free furniture, tiles in the bathroom.
 
-- **Browser (default):** the first account action opens a separate Chrome/Edge window on roomtodo.com. Sign in
-  there as usual and the window closes by itself. The token is cached in `~/.roomtodo-mcp/token.json`. That window
-  keeps its own profile, so later sign-ins are usually automatic.
-- **Token:** run with `--token` or set `ROOMTODO_TOKEN`, or call the `login` tool with a token. You can copy the
-  value of `localStorage["r2d_token_…"]` from roomtodo.com.
+Result: the picture at the top. It has a hall with the entrance door, a bathroom with a shower, a kitchen with a
+fridge and a stove, and a room with a wardrobe, bed, sofa, rug, coffee table and TV by the windows.
 
-## Options
+**House with a corridor** (`house_with_corridor`)
 
-| Flag | Env | Default | |
-|---|---|---|---|
-| `--http addr` | | stdio | serve Streamable HTTP instead of stdio |
-| `--secret s` | `ROOMTODO_SECRET` | random | URL path secret in HTTP mode (`none` disables it) |
-| `--public-url u` | `ROOMTODO_PUBLIC_URL` | | public base URL in HTTP mode, used for download links |
-| `--projects-dir d` | `ROOMTODO_PROJECTS_DIR` | `~/.roomtodo-mcp/projects` | where local `.json` projects live |
-| `--state-dir d` | `ROOMTODO_STATE_DIR` | `~/.roomtodo-mcp` | token and sign-in browser profile |
-| `--token t` | `ROOMTODO_TOKEN` | | roomtodo token |
-| `--lang l` | `ROOMTODO_LANG` | `ru` | catalog language |
-| `--browser p` | `ROOMTODO_BROWSER` | auto | Chrome/Edge executable for sign-in |
-| `--no-browser-login` | `ROOMTODO_NO_BROWSER_LOGIN` | | never open a browser |
+> Build a small house in house.json: a living room and a bedroom on both sides of a corridor, doorways from the
+> corridor, an entrance door, a window in every room, a sofa and a bed.
 
-In HTTP mode, project files are limited to the projects folder.
+![House with a corridor](docs/img/house-with-corridor.png)
 
-## Tools
+**Furnish a room in a style** (`furnish_room`)
+
+> Furnish the bedroom in house.json in a Scandinavian style.
+
+![Scandinavian bedroom](docs/img/scandinavian-bedroom.png)
+
+Some more prompts to try:
+
+- *"Make a two-room flat of 55 m² with a separate kitchen and a bathroom next to the hall."*
+- *"Open my roomtodo project 123456 and add a desk and a bookshelf to the study."*
+- *"Paint the living room walls #e8e2d6 and put light oak on the floor."*
+- *"Copy this shared project into my account: https://roomtodo.com/planner/project/…"*
+
+## Your roomtodo account (optional)
+
+Everything above works without an account. Sign in only if you want projects saved straight into *My projects*
+on roomtodo:
+
+- **Automatic:** ask for something that needs the account (for example *"list my roomtodo projects"*). A separate
+  Chrome/Edge window opens on roomtodo.com. Sign in as usual and the window closes by itself. Later sign-ins are
+  usually silent.
+- **With a token:** start the program with `--token <token>`, or set `ROOMTODO_TOKEN`. The token is the value of
+  `localStorage["r2d_token_…"]` on roomtodo.com.
+
+The token is cached in `~/.roomtodo-mcp/token.json`. Ask the assistant to *log out of roomtodo* to remove it.
+
+## What it can do
 
 | Tool | |
 |---|---|
 | `create_floorplan` | walls, rooms and doorways from rectangles |
-| `add_object`, `move_object`, `remove_object` | furniture; doors and windows snap into walls |
-| `set_material`, `set_walls_height` | finishes and height |
-| `search_catalog`, `category_tree` | catalog (no sign-in) |
-| `get_project`, `new_project`, `save_project_as`, `list_projects` | open, create, convert between file / account / share link |
+| `add_object`, `move_object`, `remove_object` | furniture; doors and windows snap into the nearest wall |
+| `set_material`, `set_walls_height` | floor, ceiling and wall materials or colours, and wall height |
+| `search_catalog`, `category_tree` | the roomtodo catalog (no account needed) |
+| `get_project`, `new_project`, `save_project_as`, `list_projects` | open, create, copy between file, account and share link |
 | `rename_project`, `share_project`, `delete_project` | account projects |
 | `login`, `logout`, `whoami` | account |
 | `list_renders`, `get_render` | renders |
 
-Each project argument accepts a `.json` file name, an account project id, or a share link. Pass `save_to` to
-write the result somewhere else, for example `"new"` for a new account project.
+A project can be a `.json` file name, an account project id, or a share link. Coordinates are centimetres, with x
+to the right and y down the plan. The assistant handles these details itself.
 
-Coordinates are floor-plan centimetres, with x to the right and y down. For example:
+## Options
 
-```json
-{
-  "project": "house.json",
-  "rooms": [
-    {"name": "Living",  "x": 0,   "y": 0, "width": 430, "depth": 660},
-    {"name": "Hall",    "x": 430, "y": 0, "width": 160, "depth": 660},
-    {"name": "Bedroom", "x": 590, "y": 0, "width": 390, "depth": 660}
-  ],
-  "openings": [{"between": ["Hall", "Living"]}, {"between": ["Hall", "Bedroom"]}]
-}
-```
+All options are optional.
 
-Then call `add_object` with `{"project": "house.json", "product_id": "941", "room": "Hall", "side": "bottom"}`
-to put an entrance door into the hall's outer wall.
+| Flag | Environment variable | Default | |
+|---|---|---|---|
+| `--projects-dir d` | `ROOMTODO_PROJECTS_DIR` | `~/.roomtodo-mcp/projects` | where project files go |
+| `--state-dir d` | `ROOMTODO_STATE_DIR` | `~/.roomtodo-mcp` | token and sign-in browser profile |
+| `--token t` | `ROOMTODO_TOKEN` | | roomtodo token |
+| `--lang l` | `ROOMTODO_LANG` | `ru` | catalog language |
+| `--browser p` | `ROOMTODO_BROWSER` | auto | Chrome/Edge for sign-in |
+| `--no-browser-login` | `ROOMTODO_NO_BROWSER_LOGIN` | | never open a browser |
 
-## Build
+To pass options in Claude Desktop, add `"args": ["--projects-dir", "D:\\Rooms"]` next to `"command"`.
+
+## Build from source
 
 ```bash
 go build -o roomtodo-mcp ./cmd/roomtodo-mcp
 go test ./...          # -short skips the test that needs network
 ```
 
-Releases are built by GitHub Actions when you push a `v*` tag.
+Releases are built by GitHub Actions when a `v*` tag is pushed.
 
 ---
 
 ## Russian
 
-Неофициальный MCP-сервер для планировщика [roomtodo.com](https://roomtodo.com). С ним Claude, Codex или ChatGPT
-рисуют планировки по описанию комнат, расставляют мебель, вставляют двери и окна в стены и работают с
-проектами в вашем аккаунте.
+Неофициальный MCP-сервер для планировщика [roomtodo.com](https://roomtodo.com). Попросите Claude или Codex
+спланировать квартиру, расставить мебель, вставить двери и окна и подобрать полы и цвет стен, а потом откройте
+результат в roomtodo.
 
-- **Без аккаунта:** каталог, публичные ссылки и проекты в виде `.json`-файлов. Чтобы открыть файл, зайдите на
-  roomtodo.com/planner, нажмите **Ctrl+Alt+O** и выберите его.
-- **С аккаунтом:** сохранение прямо в «Мои проекты». При первом обращении откроется окно браузера: войдите,
-  и оно закроется само. Вместо этого можно передать токен через `--token` или `ROOMTODO_TOKEN`.
-- **Claude и Codex:** пропишите путь к бинарнику в конфиге (примеры выше), туннель не нужен.
-- **Чат ChatGPT:** запустите `roomtodo-mcp --http :8080`, откройте туннель (`cloudflared tunnel --url http://localhost:8080`)
-  и добавьте коннектор с адресом `https://<туннель>/<секрет>/mcp`. Секрет из пути никому не давайте: по этой
-  ссылке доступен ваш аккаунт roomtodo.
+### Установка за 3 шага
+
+1. **Скачайте** архив под свою систему из [Releases](../../releases) и распакуйте, например, в
+   `C:\Tools\roomtodo-mcp\`. Внутри одна программа, больше ничего ставить не нужно.
+2. **Подключите** её к ассистенту (путь замените на свой):
+   - **Claude Desktop:** Settings → Developer → Edit Config, добавьте блок `roomtodo` из примера выше и
+     перезапустите Claude.
+   - **Claude Code:** `claude mcp add roomtodo -- C:/Tools/roomtodo-mcp/roomtodo-mcp.exe`
+   - **Codex:** `codex mcp add roomtodo -- C:/Tools/roomtodo-mcp/roomtodo-mcp.exe`
+3. **Попросите**, например: *«Сделай в roomtodo однокомнатную квартиру 40 м² в apartment.json и обставь её»*.
+   Чтобы посмотреть результат, откройте <https://roomtodo.com/planner> (аккаунт не нужен), нажмите
+   **Ctrl+Alt+O**, выберите файл и переключитесь на **3D**. Файлы лежат в `~/.roomtodo-mcp/projects`.
+
+### Готовые промпты
+
+Они встроены в сервер: в Claude Desktop они в меню **+**, в Claude Code это команды вида
+`/mcp__roomtodo__one_room_apartment`. Скриншоты результатов выше.
+
+- **«Однокомнатная квартира 40 м²»:** планировка, дверь, окна, мебель и плитка в санузле.
+- **«Дом с коридором»:** две комнаты по сторонам коридора, проходы, дверь, окна, диван и кровать.
+- **«Обставь комнату в стиле…»:** например, *«Обставь спальню в house.json в скандинавском стиле»*.
+
+### Аккаунт roomtodo (по желанию)
+
+Всё выше работает без аккаунта. Войти нужно, только если хотите сохранять проекты прямо в «Мои проекты»:
+
+- **Автоматически:** при первой такой просьбе откроется окно Chrome или Edge. Войдите, и оно закроется само.
+- **Токеном:** запустите программу с `--token` или задайте `ROOMTODO_TOKEN`.
 
 ## License
 
