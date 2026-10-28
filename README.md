@@ -1,7 +1,7 @@
 # roomtodo-mcp
 
 An unofficial [MCP](https://modelcontextprotocol.io) server for the [roomtodo.com](https://roomtodo.com) 3D room planner.
-Let Claude or ChatGPT draw floor plans, furnish rooms, put doors and windows into walls and manage your roomtodo projects.
+Let Claude, Codex or ChatGPT draw floor plans, furnish rooms, put doors and windows into walls and manage your roomtodo projects.
 
 > Unofficial: not affiliated with roomtodo. It talks to the same web API the planner uses, reconstructed
 > from the site itself, so it can break when the site changes.
@@ -50,9 +50,25 @@ Settings → Developer → Edit Config, then add:
 claude mcp add roomtodo -- /path/to/roomtodo-mcp
 ```
 
-### ChatGPT
+### Codex (CLI and IDE extension)
 
-ChatGPT connects to MCP servers over HTTPS, so run the server in HTTP mode and expose it with a tunnel:
+Codex runs on your computer, so like Claude it starts the server directly. No tunnel needed:
+
+```bash
+codex mcp add roomtodo -- /path/to/roomtodo-mcp
+```
+
+Or add it to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.roomtodo]
+command = 'C:\Tools\roomtodo-mcp\roomtodo-mcp.exe'
+```
+
+### ChatGPT (chat)
+
+The ChatGPT chat connects to MCP servers from OpenAI's cloud over HTTPS. Run the server in HTTP mode and expose it
+with a tunnel:
 
 ```bash
 roomtodo-mcp --http :8080
@@ -142,7 +158,7 @@ Releases are built by GitHub Actions when you push a `v*` tag.
 
 ## Russian
 
-Неофициальный MCP-сервер для планировщика [roomtodo.com](https://roomtodo.com). С ним Claude или ChatGPT
+Неофициальный MCP-сервер для планировщика [roomtodo.com](https://roomtodo.com). С ним Claude, Codex или ChatGPT
 рисуют планировки по описанию комнат, расставляют мебель, вставляют двери и окна в стены и работают с
 проектами в вашем аккаунте.
 
@@ -150,8 +166,8 @@ Releases are built by GitHub Actions when you push a `v*` tag.
   roomtodo.com/planner, нажмите **Ctrl+Alt+O** и выберите его.
 - **С аккаунтом:** сохранение прямо в «Мои проекты». При первом обращении откроется окно браузера: войдите,
   и оно закроется само. Вместо этого можно передать токен через `--token` или `ROOMTODO_TOKEN`.
-- **Claude:** пропишите путь к бинарнику в конфиге (примеры выше).
-- **ChatGPT:** запустите `roomtodo-mcp --http :8080`, откройте туннель (`cloudflared tunnel --url http://localhost:8080`)
+- **Claude и Codex:** пропишите путь к бинарнику в конфиге (примеры выше), туннель не нужен.
+- **Чат ChatGPT:** запустите `roomtodo-mcp --http :8080`, откройте туннель (`cloudflared tunnel --url http://localhost:8080`)
   и добавьте коннектор с адресом `https://<туннель>/<секрет>/mcp`. Секрет из пути никому не давайте: по этой
   ссылке доступен ваш аккаунт roomtodo.
 
