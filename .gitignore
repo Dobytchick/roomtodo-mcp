@@ -1,0 +1,12 @@
+# roomtodo.com site code (reference only, owned by roomtodo; never publish)
+/bundles/
+/src_react/
+/tools/
+
+# old Node.js prototype and scratch
+/roomtodo-mcp/
+/go-test/
+
+# build output
+/dist/
+*.exe
